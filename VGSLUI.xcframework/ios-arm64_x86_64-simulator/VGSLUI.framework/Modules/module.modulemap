@@ -1,0 +1,11 @@
+framework module VGSLUI {
+  umbrella header "VGSLUI-umbrella.h"
+
+  export *
+  module * { export * }
+}
+
+module VGSLUI.Swift {
+  header "VGSLUI-Swift.h"
+  requires objc
+}

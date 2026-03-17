@@ -1,0 +1,11 @@
+framework module VGSLFundamentals {
+  umbrella header "VGSLFundamentals-umbrella.h"
+
+  export *
+  module * { export * }
+}
+
+module VGSLFundamentals.Swift {
+  header "VGSLFundamentals-Swift.h"
+  requires objc
+}

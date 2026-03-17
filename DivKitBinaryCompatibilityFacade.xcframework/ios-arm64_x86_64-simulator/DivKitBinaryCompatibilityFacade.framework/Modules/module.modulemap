@@ -1,0 +1,11 @@
+framework module DivKitBinaryCompatibilityFacade {
+  umbrella header "DivKitBinaryCompatibilityFacade-umbrella.h"
+
+  export *
+  module * { export * }
+}
+
+module DivKitBinaryCompatibilityFacade.Swift {
+  header "DivKitBinaryCompatibilityFacade-Swift.h"
+  requires objc
+}

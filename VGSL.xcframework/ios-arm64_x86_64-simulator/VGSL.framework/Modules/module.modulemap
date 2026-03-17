@@ -1,0 +1,11 @@
+framework module VGSL {
+  umbrella header "VGSL-umbrella.h"
+
+  export *
+  module * { export * }
+}
+
+module VGSL.Swift {
+  header "VGSL-Swift.h"
+  requires objc
+}

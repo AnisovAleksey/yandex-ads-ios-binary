@@ -1,0 +1,10 @@
+Apache License
+Version 2.0, January 2004
+http://www.apache.org/licenses/
+
+This repository contains prebuilt binary distributions of:
+- YandexMobileAds SDK (https://github.com/yandexmobile/yandex-ads-sdk-ios)
+- DivKit (https://github.com/divkit/divkit-ios)
+- VGSL (https://github.com/nicklama/VGSL)
+
+All original licenses apply to their respective components.

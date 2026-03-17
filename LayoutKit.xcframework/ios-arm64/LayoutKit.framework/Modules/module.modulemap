@@ -1,0 +1,11 @@
+framework module LayoutKit {
+  umbrella header "DivKit_LayoutKit-umbrella.h"
+
+  export *
+  module * { export * }
+}
+
+module LayoutKit.Swift {
+  header "LayoutKit-Swift.h"
+  requires objc
+}
