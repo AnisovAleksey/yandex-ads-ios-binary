@@ -1,0 +1,9 @@
+name: Dummy
+targets:
+  Dummy:
+    type: application
+    platform: iOS
+    deploymentTarget: "13.0"
+    sources: [Dummy]
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.dummy.build

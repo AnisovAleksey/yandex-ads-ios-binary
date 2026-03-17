@@ -1,114 +1,125 @@
 #!/bin/bash
 #
-# Standalone script to build YandexMobileAds + DivKit + VGSL as XCFrameworks.
-# No external project required — creates a temporary workspace automatically.
+# Builds YandexMobileAds and all its transitive dependencies as XCFrameworks.
+# Uses the sample/ project — no external project required.
+#
+# Automatically discovers all pod targets (except AppMetrica, which stays as
+# a CocoaPods source dependency) and builds them with dSYMs.
 #
 # Usage:
-#   ./build_frameworks.sh [yandex_mobile_ads_version]
-#   ./build_frameworks.sh          # uses version from podspec
-#   ./build_frameworks.sh 7.12.3   # explicit version
+#   ./build_frameworks.sh              # latest YandexMobileAds
+#   ./build_frameworks.sh 7.12.3       # pin specific version
 #
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-OUTPUT_DIR="$SCRIPT_DIR"
-WORK_DIR=$(mktemp -d)
+SAMPLE_DIR="$SCRIPT_DIR/sample"
+OUTPUT_DIR="$SCRIPT_DIR/Frameworks"
+BUILD_DIR="$SAMPLE_DIR/.build"
 
-# Read version from argument or podspec
+# --- Step 0: Resolve version ---
+
 if [ $# -ge 1 ]; then
-  YANDEX_VERSION="$1"
+  YANDEX_VERSION="=$1"
+  VERSION_LABEL="$1"
 else
-  YANDEX_VERSION=$(grep "s.version" "$SCRIPT_DIR/YandexMobileAdsBinary.podspec" | head -1 | sed "s/.*'\(.*\)'/\1/")
+  YANDEX_VERSION=""
+  VERSION_LABEL="latest"
 fi
 
-echo "Building frameworks for YandexMobileAds $YANDEX_VERSION"
-echo "Working directory: $WORK_DIR"
+echo "Building frameworks for YandexMobileAds $VERSION_LABEL"
 
-# target_name:product_name (order matters for build deps)
-TARGETS=(
-  "VGSLFundamentals:VGSLFundamentals"
-  "VGSLUI:VGSLUI"
-  "VGSLNetworking:VGSLNetworking"
-  "VGSL:VGSL"
-  "DivKit_LayoutKitInterface:LayoutKitInterface"
-  "DivKit_LayoutKit:LayoutKit"
-  "DivKit_Serialization:Serialization"
-  "DivKit:DivKit"
-  "DivKitBinaryCompatibilityFacade:DivKitBinaryCompatibilityFacade"
-)
+# --- Step 1: pod install in sample project ---
 
-# --- Step 1: Create a temporary iOS project with YandexMobileAds ---
+cd "$SAMPLE_DIR"
 
-cat > "$WORK_DIR/Podfile" << EOF
+# Write Podfile with requested version
+if [ -n "$YANDEX_VERSION" ]; then
+  cat > "$SAMPLE_DIR/Podfile" << EOF
 platform :ios, '13.0'
 
 target 'Dummy' do
   use_frameworks!
-  pod 'YandexMobileAds', '=$YANDEX_VERSION'
+  pod 'YandexMobileAds', '$YANDEX_VERSION'
 end
 EOF
+else
+  cat > "$SAMPLE_DIR/Podfile" << EOF
+platform :ios, '13.0'
 
-# Minimal Xcode project for CocoaPods
-mkdir -p "$WORK_DIR/Dummy"
-cat > "$WORK_DIR/Dummy/Info.plist" << 'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>CFBundleIdentifier</key>
-  <string>com.dummy.build</string>
-  <key>CFBundleExecutable</key>
-  <string>Dummy</string>
-</dict>
-</plist>
+target 'Dummy' do
+  use_frameworks!
+  pod 'YandexMobileAds'
+end
 EOF
+fi
 
-cat > "$WORK_DIR/Dummy.xcodeproj/project.pbxproj" << 'PBXPROJ'
-// !$*UTF8*$!
-{
-  archiveVersion = 1;
-  classes = {};
-  objectVersion = 56;
-  objects = {
-    ROOT = { isa = PBXProject; buildConfigurationList = CFGLIST; compatibilityVersion = "Xcode 14.0"; mainGroup = MAIN; targets = (TARGET); };
-    MAIN = { isa = PBXGroup; children = (); sourceTree = "<group>"; };
-    TARGET = { isa = PBXNativeTarget; buildConfigurationList = TCFGLIST; buildPhases = (); name = Dummy; productName = Dummy; productType = "com.apple.product-type.application"; };
-    CFGLIST = { isa = XCConfigurationList; buildConfigurations = (DBG, REL); };
-    TCFGLIST = { isa = XCConfigurationList; buildConfigurations = (TDBG, TREL); };
-    DBG = { isa = XCBuildConfiguration; buildSettings = { ALWAYS_SEARCH_USER_PATHS = NO; IPHONEOS_DEPLOYMENT_TARGET = 13.0; SDKROOT = iphoneos; }; name = Debug; };
-    REL = { isa = XCBuildConfiguration; buildSettings = { ALWAYS_SEARCH_USER_PATHS = NO; IPHONEOS_DEPLOYMENT_TARGET = 13.0; SDKROOT = iphoneos; }; name = Release; };
-    TDBG = { isa = XCBuildConfiguration; buildSettings = { INFOPLIST_FILE = Dummy/Info.plist; PRODUCT_BUNDLE_IDENTIFIER = com.dummy.build; PRODUCT_NAME = Dummy; }; name = Debug; };
-    TREL = { isa = XCBuildConfiguration; buildSettings = { INFOPLIST_FILE = Dummy/Info.plist; PRODUCT_BUNDLE_IDENTIFIER = com.dummy.build; PRODUCT_NAME = Dummy; }; name = Release; };
-  };
-  rootObject = ROOT;
-}
-PBXPROJ
-
-echo "=== Installing YandexMobileAds $YANDEX_VERSION via CocoaPods ==="
-cd "$WORK_DIR"
 pod install --repo-update 2>&1 | grep -v "^$"
 
-PODS_PROJECT="$WORK_DIR/Pods/Pods.xcodeproj"
-BUILD_DIR="$WORK_DIR/.build"
-
+PODS_PROJECT="$SAMPLE_DIR/Pods/Pods.xcodeproj"
 if [ ! -d "$PODS_PROJECT" ]; then
-  echo "Error: pod install failed — Pods project not found"
-  rm -rf "$WORK_DIR"
+  echo "Error: pod install failed"
   exit 1
 fi
 
-# --- Step 2: Build each target for device + simulator ---
+# Extract actual resolved version
+YANDEX_RESOLVED=$(grep 'YandexMobileAds (' "$SAMPLE_DIR/Podfile.lock" | head -1 | sed 's/.*(\(.*\)).*/\1/')
+echo "Resolved YandexMobileAds version: $YANDEX_RESOLVED"
 
-create_xcframework_manually() {
+# --- Step 2: Discover pod targets to build ---
+# We build everything except: AppMetrica*, KSCrash*, Dummy (the app target), and Pods-* aggregates.
+# These are either managed by CocoaPods separately or are not real frameworks.
+
+# YandexMobileAds is already a pre-built xcframework — just copy it, don't build
+SKIP_PATTERN="^(AppMetrica|KSCrash|Dummy|Pods-|YandexMobileAds|.*PrivacyInfo)"
+
+ALL_TARGETS=$(xcodebuild -project "$PODS_PROJECT" -list 2>/dev/null \
+  | sed -n '/Targets:/,/Build Configurations:/p' \
+  | grep -v "Targets:\|Build Configurations:" \
+  | sed 's/^[[:space:]]*//' \
+  | grep -v "^$" \
+  | sort -u)
+
+echo ""
+echo "=== Discovered pod targets ==="
+
+TARGETS_TO_BUILD=()
+for target in $ALL_TARGETS; do
+  if echo "$target" | grep -qE "$SKIP_PATTERN"; then
+    continue
+  fi
+  TARGETS_TO_BUILD+=("$target")
+  echo "  $target"
+done
+
+echo ""
+
+# --- Step 3: Build each target ---
+
+rm -rf "$BUILD_DIR"
+rm -rf "$OUTPUT_DIR"
+mkdir -p "$OUTPUT_DIR"
+
+create_xcframework() {
   local name="$1"
   local device_fw="$2"
   local sim_fw="$3"
   local output="$4"
+  local device_dsym="$5"
+  local sim_dsym="$6"
 
   rm -rf "$output"
   mkdir -p "$output/ios-arm64" "$output/ios-arm64_x86_64-simulator"
   cp -R "$device_fw" "$output/ios-arm64/"
   cp -R "$sim_fw" "$output/ios-arm64_x86_64-simulator/"
+
+  # Include dSYMs if available
+  if [ -d "$device_dsym" ]; then
+    cp -R "$device_dsym" "$output/ios-arm64/"
+  fi
+  if [ -d "$sim_dsym" ]; then
+    cp -R "$sim_dsym" "$output/ios-arm64_x86_64-simulator/"
+  fi
 
   cat > "$output/Info.plist" << PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -158,12 +169,15 @@ create_xcframework_manually() {
 PLIST
 }
 
-echo ""
 echo "=== Building XCFrameworks ==="
 
-for entry in "${TARGETS[@]}"; do
-  target="${entry%%:*}"
-  product="${entry##*:}"
+for target in "${TARGETS_TO_BUILD[@]}"; do
+  # Get the actual product name (may differ from target name)
+  product=$(xcodebuild -project "$PODS_PROJECT" -target "$target" -showBuildSettings 2>/dev/null \
+    | grep "PRODUCT_MODULE_NAME" | head -1 | awk '{print $3}')
+  if [ -z "$product" ]; then
+    product="$target"
+  fi
 
   echo "--- $target -> $product.xcframework ---"
 
@@ -178,6 +192,7 @@ for entry in "${TARGETS[@]}"; do
     -configuration Release \
     CONFIGURATION_BUILD_DIR="$DEVICE_DIR" \
     OBJROOT="$BUILD_DIR/obj/device" \
+    DEBUG_INFORMATION_FORMAT=dwarf-with-dsym \
     -quiet 2>&1 | grep -E "^(error:|fatal)" || true
 
   xcodebuild build \
@@ -187,32 +202,60 @@ for entry in "${TARGETS[@]}"; do
     -configuration Release \
     CONFIGURATION_BUILD_DIR="$SIM_DIR" \
     OBJROOT="$BUILD_DIR/obj/simulator" \
+    DEBUG_INFORMATION_FORMAT=dwarf-with-dsym \
     -quiet 2>&1 | grep -E "^(error:|fatal)" || true
 
   DEVICE_FW="$DEVICE_DIR/$product.framework"
   SIM_FW="$SIM_DIR/$product.framework"
+  DEVICE_DSYM="$DEVICE_DIR/$product.framework.dSYM"
+  SIM_DSYM="$SIM_DIR/$product.framework.dSYM"
 
   if [ ! -d "$DEVICE_FW" ]; then
-    echo "Error: $DEVICE_FW not found"
-    rm -rf "$WORK_DIR"
-    exit 1
+    echo "Warning: $product.framework not found for device, skipping $target"
+    continue
   fi
   if [ ! -d "$SIM_FW" ]; then
-    echo "Error: $SIM_FW not found"
-    rm -rf "$WORK_DIR"
-    exit 1
+    echo "Warning: $product.framework not found for simulator, skipping $target"
+    continue
   fi
 
-  create_xcframework_manually "$product" "$DEVICE_FW" "$SIM_FW" "$OUTPUT_DIR/$product.xcframework"
+  create_xcframework "$product" "$DEVICE_FW" "$SIM_FW" "$OUTPUT_DIR/$product.xcframework" "$DEVICE_DSYM" "$SIM_DSYM"
 done
 
-# Copy pre-built YandexMobileAds.xcframework
+# Copy pre-built YandexMobileAds.xcframework (already binary from Yandex)
 echo "--- YandexMobileAds.xcframework (copy) ---"
-rm -rf "$OUTPUT_DIR/YandexMobileAds.xcframework"
-cp -R "$WORK_DIR/Pods/YandexMobileAds/static/YandexMobileAds.xcframework" "$OUTPUT_DIR/"
+cp -R "$SAMPLE_DIR/Pods/YandexMobileAds/static/YandexMobileAds.xcframework" "$OUTPUT_DIR/"
 
-# --- Step 3: Cleanup ---
-rm -rf "$WORK_DIR"
+# --- Step 4: Cleanup ---
+rm -rf "$BUILD_DIR"
+
+# --- Step 5: Update podspec version ---
+sed -i '' "s/s.version.*=.*/s.version      = '$YANDEX_RESOLVED'/" "$SCRIPT_DIR/YandexMobileAdsBinary.podspec"
+
+# Update vendored_frameworks list dynamically
+FRAMEWORKS=$(ls -d "$OUTPUT_DIR"/*.xcframework | xargs -I{} basename {} | sort)
+VENDOR_LIST=""
+for fw in $FRAMEWORKS; do
+  VENDOR_LIST="$VENDOR_LIST    'Frameworks/$fw',\n"
+done
+
+# Replace vendored_frameworks block in podspec
+python3 -c "
+import re, sys
+with open('$SCRIPT_DIR/YandexMobileAdsBinary.podspec') as f:
+    content = f.read()
+new_list = '''$VENDOR_LIST'''
+content = re.sub(
+    r\"s\.vendored_frameworks\s*=\s*\[.*?\]\",
+    's.vendored_frameworks = [\n' + new_list.rstrip(',\n') + '\n  ]',
+    content, flags=re.DOTALL)
+with open('$SCRIPT_DIR/YandexMobileAdsBinary.podspec', 'w') as f:
+    f.write(content)
+"
 
 echo ""
-echo "Done! All frameworks for YandexMobileAds $YANDEX_VERSION are in $OUTPUT_DIR"
+echo "Done! YandexMobileAds $YANDEX_RESOLVED"
+echo "Frameworks in $OUTPUT_DIR:"
+ls "$OUTPUT_DIR/" | grep xcframework
+echo ""
+echo "Podspec updated to version $YANDEX_RESOLVED"

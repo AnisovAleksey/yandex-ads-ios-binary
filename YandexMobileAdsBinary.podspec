@@ -11,19 +11,21 @@ Pod::Spec.new do |s|
   s.ios.deployment_target = '13.0'
   s.static_framework = true
 
+  # Auto-updated by build_frameworks.sh
   s.vendored_frameworks = [
-    'YandexMobileAds.xcframework',
-    'DivKit.xcframework',
-    'DivKitBinaryCompatibilityFacade.xcframework',
-    'LayoutKit.xcframework',
-    'LayoutKitInterface.xcframework',
-    'Serialization.xcframework',
-    'VGSL.xcframework',
-    'VGSLFundamentals.xcframework',
-    'VGSLNetworking.xcframework',
-    'VGSLUI.xcframework',
+    'Frameworks/DivKit.xcframework',
+    'Frameworks/DivKitBinaryCompatibilityFacade.xcframework',
+    'Frameworks/LayoutKit.xcframework',
+    'Frameworks/LayoutKitInterface.xcframework',
+    'Frameworks/Serialization.xcframework',
+    'Frameworks/VGSL.xcframework',
+    'Frameworks/VGSLFundamentals.xcframework',
+    'Frameworks/VGSLNetworking.xcframework',
+    'Frameworks/VGSLUI.xcframework',
+    'Frameworks/YandexMobileAds.xcframework'
   ]
 
+  # AppMetrica stays as a CocoaPods dependency (shared with appmetrica_plugin, etc.)
   s.dependency 'AppMetricaCore', '>= 5.8.0', '< 6.0.0'
   s.dependency 'AppMetricaCrashes', '>= 5.8.0', '< 6.0.0'
   s.dependency 'AppMetricaLibraryAdapter', '>= 5.8.0', '< 6.0.0'

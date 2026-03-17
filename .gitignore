@@ -1,3 +1,6 @@
-Pods/
-.build/
-*.xcworkspace
+sample/Pods/
+sample/build/
+sample/.build/
+sample/Podfile.lock
+sample/Podfile.build
+sample/*.xcworkspace
